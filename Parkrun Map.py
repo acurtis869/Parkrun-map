@@ -1,7 +1,7 @@
 import geopandas as gpd
 import pandas as pd
-import matplotlib.pyplot as plt
 import folium
+import branca.colormap as cm
 
 # Load borough boundaries
 boroughs = gpd.read_file("Shape Files/London_Borough_Excluding_MHW.shp")
@@ -11,20 +11,38 @@ parkruns = pd.read_csv("Parkruns.csv")
 parkruns_gdf = gpd.GeoDataFrame(
     parkruns, geometry=gpd.points_from_xy(parkruns.Longitude, parkruns.Latitude))
 
+# Calculate the percentage of completed parkruns for each borough
+borough_completion = parkruns.groupby('Borough')['Completed'].value_counts(normalize=True).unstack(fill_value=0)
+borough_completion['Percentage'] = borough_completion.get('Yes', 0) * 100
+
+# Merge with the boroughs GeoDataFrame
+boroughs = boroughs.merge(borough_completion['Percentage'], left_on='NAME', right_index=True, how='left')
+
+# Replace NaN values in the 'Percentage' column with 'No Parkruns'
+boroughs['Percentage'] = boroughs['Percentage'].fillna(100)
+
+# Create a color map
+colormap = cm.LinearColormap(colors=['red', 'yellow', 'green'], vmin=0, vmax=100)
+colormap.caption = 'Percentage of Parkruns Completed'
+
 # Create interactive map
 m = folium.Map(location=[51.475031657317174, -0.1225806048841719], zoom_start=11)
 
 # Define the style function to customize borders and remove fill
 def style_function(feature):
+    percentage = feature['properties']['Percentage']
     return {
-        'fillColor': 'transparent',  # No fill color
+        'fillColor': colormap(percentage),
         'color': 'black',            # Border color
         'weight': 2,                 # Border thickness
-        'fillOpacity': 0             # Fill opacity
+        'fillOpacity': 0.3             # Fill opacity
     }
 
+# Create a formatted percentage column
+boroughs['Formatted_Percentage'] = boroughs['Percentage'].apply(lambda x: f"{x:.1f}%")
+
 # Add borough boundaries to the map with custom style
-folium.GeoJson(boroughs, style_function=style_function).add_to(m)
+folium.GeoJson(boroughs, style_function=style_function, tooltip=folium.GeoJsonTooltip(fields=['NAME', 'Formatted_Percentage'], aliases=['Borough:', 'Completed Percentage:'])).add_to(m)
 
 # Add parkruns to the map
 for idx, row in parkruns.iterrows():
@@ -34,6 +52,9 @@ for idx, row in parkruns.iterrows():
         popup=row['Parkrun'],
         icon=folium.Icon(color=color)
     ).add_to(m)
+
+# Add colormap to the map
+colormap.add_to(m)
 
 # Save the map to an HTML file
 m.save("parkrun_map.html")
