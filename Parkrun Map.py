@@ -46,15 +46,35 @@ folium.GeoJson(boroughs, style_function=style_function, tooltip=folium.GeoJsonTo
 
 # Add parkruns to the map
 for idx, row in parkruns.iterrows():
-    color = 'green' if row['Completed'] == 'Yes' else 'red'
+    if row['Completed'] == 'Yes':
+        popup_content = f"{row['Parkrun']}<br>PB: {row['Time']}"
+        color = 'green'
+    else:
+        popup_content = row['Parkrun']
+        color = 'red'
+    
     folium.Marker(
         [row['Latitude'], row['Longitude']],
-        popup=row['Parkrun'],
+        popup=popup_content,
         icon=folium.Icon(color=color)
     ).add_to(m)
 
 # Add colormap to the map
 colormap.add_to(m)
+
+# Calculate completed parkruns statistics
+total_parkruns = len(parkruns)
+completed_parkruns = parkruns[parkruns['Completed'] == 'Yes'].shape[0]
+completion_percentage = (completed_parkruns / total_parkruns) * 100
+
+# Add text to the top right of the HTML page
+html = f"""
+<div style="position: absolute; bottom: 15px; right: 10px; background-color: white; padding: 10px; z-index: 9999;">
+    London Parkruns Completed: {completed_parkruns} out of {total_parkruns} ({completion_percentage:.1f}%)
+</div>
+"""
+m.get_root().html.add_child(folium.Element(html))
+
 
 # Save the map to an HTML file
 m.save("parkrun_map.html")
